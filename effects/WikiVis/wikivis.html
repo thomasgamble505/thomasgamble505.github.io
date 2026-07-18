@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>WikiViz</title>
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --panel-bg: #131316;
+    --panel-bg-alt: #1c1c20;
+    --panel-border: #2b2c31;
+    --text: #e4e4e6;
+    --text-dim: #8a8a90;
+    --text-faint: #55565c;
+    --accent: #c9a227;
+    --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', 'IBM Plex Mono', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    font-family: var(--mono);
+    color: var(--text);
+  }
+  #canvas-container {
+    position: fixed; inset: 0;
+    touch-action: none; cursor: grab;
+  }
+  #canvas-container.dragging { cursor: grabbing; }
+  #canvas-container canvas { display: block; }
+
+  .panel {
+    position: fixed;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 14px 16px;
+  }
+
+  #title-block {
+    top: 16px; left: 16px;
+    max-width: 290px;
+  }
+  #title-block h1 {
+    font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    margin: 0 0 8px 0; font-weight: 600;
+    color: var(--text); padding-bottom: 8px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  #title-block p {
+    margin: 0; font-size: 11.5px; line-height: 1.55;
+    color: var(--text-dim); font-family: var(--sans);
+  }
+  #title-block p b { color: var(--text); font-weight: 600; }
+
+  #controls {
+    top: 16px; right: 16px;
+    width: 300px;
+  }
+  #controls h2, #stats h2 {
+    font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-dim); margin: 0 0 10px 0; font-weight: 600;
+    padding-bottom: 8px; border-bottom: 1px solid var(--panel-border);
+  }
+  .row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 9px; flex-wrap: wrap;
+  }
+  .row label {
+    font-size: 10.5px; color: var(--text-dim);
+    flex-shrink: 0; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .btn {
+    appearance: none; border: 1px solid var(--panel-border);
+    background: var(--panel-bg-alt); color: var(--text);
+    border-radius: 0; padding: 7px 10px; font-size: 11px;
+    font-family: var(--mono); cursor: pointer;
+    transition: background .1s, border-color .1s;
+    width: 100%; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase;
+  }
+  .btn:hover { background: #232328; border-color: #3a3b42; }
+  .btn:active { background: #2a2a30; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #151208; }
+  .btn.primary:hover { background: #dbb434; border-color: #dbb434; }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  input[type="range"] {
+    flex: 1; min-width: 60px;
+    -webkit-appearance: none; appearance: none;
+    height: 2px; background: var(--panel-border); outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 10px; height: 14px;
+    background: var(--text-dim); border: none; cursor: pointer; border-radius: 1px;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover { background: var(--accent); }
+  input[type="range"]::-moz-range-thumb {
+    width: 10px; height: 14px;
+    background: var(--text-dim); border: none; cursor: pointer; border-radius: 1px;
+  }
+  input[type="range"]::-moz-range-thumb:hover { background: var(--accent); }
+
+  input[type="text"] {
+    flex: 1; background: var(--panel-bg-alt);
+    border: 1px solid var(--panel-border); border-radius: 0;
+    padding: 6px 8px; color: var(--text); font-size: 11px;
+    font-family: var(--mono); outline: none; min-width: 60px;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  input[type="text"]::placeholder { color: var(--text-faint); }
+
+  input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 13px; height: 13px; cursor: pointer; flex-shrink: 0;
+  }
+
+  .toggle-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10.5px; color: var(--text-dim);
+    margin-bottom: 8px; text-transform: uppercase; letter-spacing: .04em;
+  }
+
+  #depth-val {
+    font-family: var(--mono); color: var(--text);
+    font-size: 11px; min-width: 28px; text-align: right;
+  }
+
+  #stats {
+    bottom: 16px; right: 16px;
+    font-family: var(--mono); font-size: 11px; line-height: 1.85;
+    color: var(--text-dim); min-width: 200px;
+  }
+  #stats .stat-val { color: var(--text); font-weight: 600; }
+  #stats .legend {
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--panel-border);
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 7px;
+    margin-bottom: 5px; font-size: 10.5px;
+  }
+  .legend-dot { width: 7px; height: 7px; border-radius: 0; flex-shrink: 0; }
+
+  #info-panel {
+    bottom: 16px; left: 16px;
+    max-width: 320px; display: none;
+  }
+  #info-panel.visible { display: block; }
+  #info-panel h3 {
+    margin: 0 0 8px 0; font-size: 12px; font-weight: 600;
+    color: var(--text); padding-bottom: 8px; padding-right: 24px;
+    border-bottom: 1px solid var(--panel-border);
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  #info-panel .meta {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text-dim); margin-bottom: 10px; line-height: 1.6;
+  }
+  #info-panel .meta span { color: var(--accent); }
+  #info-panel a {
+    color: var(--text); font-size: 11px; text-decoration: none;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  #info-panel a:hover { border-color: var(--accent); color: var(--accent); }
+  #info-panel .close-btn {
+    position: absolute; top: 10px; right: 12px;
+    cursor: pointer; color: var(--text-dim); font-size: 14px;
+    background: none; border: none; font-family: var(--mono);
+  }
+  #info-panel .close-btn:hover { color: var(--text); }
+
+  #tooltip {
+    position: fixed; pointer-events: none;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 0; padding: 4px 8px; font-size: 11px; color: var(--text);
+    display: none; z-index: 50; font-family: var(--mono);
+    white-space: nowrap; transform: translate(-50%, -130%);
+  }
+
+  #loading {
+    position: fixed; inset: 0;
+    background: #08080a; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 100;
+    transition: opacity .3s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2px solid var(--panel-border);
+    border-top-color: var(--text-dim);
+    animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading-text {
+    font-size: 11px; color: var(--text-dim);
+    font-family: var(--mono); letter-spacing: .04em; text-transform: uppercase;
+  }
+  #loading-bar-track {
+    width: 200px; height: 2px; background: var(--panel-border);
+    margin-top: 14px; overflow: hidden;
+  }
+  #loading-bar {
+    height: 100%; width: 0%;
+    background: var(--text-dim); transition: width .2s;
+  }
+
+  #about-toggle {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 10.5px; color: var(--text-dim); cursor: pointer;
+    font-family: var(--mono); background: var(--panel-bg);
+    border: 1px solid var(--panel-border); padding: 6px 12px;
+    text-transform: uppercase; letter-spacing: .06em; z-index: 20;
+  }
+  #about-toggle:hover { color: var(--text); border-color: var(--text-faint); }
+  #about-panel {
+    position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%);
+    max-width: 440px; font-size: 11.5px; line-height: 1.6;
+    color: var(--text-dim); display: none; z-index: 20;
+    font-family: var(--sans);
+  }
+  #about-panel.visible { display: block; }
+  #about-panel b { color: var(--text); font-weight: 600; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--panel-border); }
+
+  @media (max-width: 640px) {
+    #controls { width: 210px; padding: 10px 12px; right: 8px; top: 8px; }
+    #title-block { max-width: 160px; padding: 10px 12px; top: 8px; left: 8px; }
+    #stats { display: none; }
+    #about-panel { max-width: 88vw; }
+    .row label { font-size: 9.5px; }
+    input[type="range"] { min-width: 40px; }
+    #controls h2 { font-size: 9px; }
+    .btn { font-size: 9.5px; padding: 5px 8px; }
+  }
+  @media (max-width: 480px) {
+    #controls { width: 180px; padding: 8px 10px; right: 4px; top: 4px; }
+    #title-block { max-width: 130px; padding: 8px 10px; top: 4px; left: 4px; }
+    #title-block h1 { font-size: 10px; }
+    #title-block p { font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="title-block" class="panel">
+  <h1>Getting to Philosophy</h1>
+  <p>Follow each article's first link, and ~95% of Wikipedia eventually arrives at <b>Philosophy</b>. This web is a visual representation of this phenomenon. And it looks like no mans sky lol</p>
+</div>
+
+<div id="controls" class="panel">
+  <h2>Build &amp; explore</h2>
+  <div class="row"><button id="btn-demo" class="btn primary">Load demo web</button></div>
+  <div class="row"><button id="btn-live" class="btn">Crawl live Wikipedia</button></div>
+  <div class="row">
+    <label for="seed-range">Seeds</label>
+    <input type="range" id="seed-range" min="10" max="300" value="50" step="10" />
+    <span id="node-count-val">50</span>
+  </div>
+  <div class="row">
+    <label for="depth-range">Hops shown</label>
+    <input type="range" id="depth-range" min="0" max="30" value="20" step="1" />
+    <span id="depth-val">20</span>
+  </div>
+  <div class="row"><input type="text" id="search-box" placeholder="Search a page…" list="title-list" /><datalist id="title-list"></datalist></div>
+  <div class="row"><button id="btn-goto" class="btn">Go</button></div>
+  <div class="toggle-row"><span>Auto-rotate</span><input type="checkbox" id="toggle-rotate" checked /></div>
+  <div class="toggle-row"><span>Show edges</span><input type="checkbox" id="toggle-edges" checked /></div>
+  <div class="row"><button id="btn-reset" class="btn">Reset view</button></div>
+</div>
+
+<div id="stats" class="panel">
+  <h2>Signal</h2>
+  <div>Nodes <span class="stat-val" id="stat-nodes">0</span></div>
+  <div>Edges <span class="stat-val" id="stat-edges">0</span></div>
+  <div>Converge to Philosophy <span class="stat-val" id="stat-converge">0%</span></div>
+  <div>Avg hops <span class="stat-val" id="stat-avghops">0</span></div>
+  <div>Longest chain <span class="stat-val" id="stat-maxhops">0</span></div>
+  <div>Busiest hub <span class="stat-val" id="stat-hub">—</span></div>
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:#ffd88a;"></span>Philosophy (root)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#8b5cf6;"></span>Near root</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#22d3ee;"></span>Mid chain</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#fb7185;"></span>Far chain</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#64748b;"></span>Loop / dead end</div>
+  </div>
+</div>
+
+<div id="info-panel" class="panel">
+  <button class="close-btn" id="info-close">✕</button>
+  <h3 id="info-title">—</h3>
+  <div class="meta" id="info-meta"></div>
+  <a id="info-link" href="#" target="_blank" rel="noopener">Open on Wikipedia →</a>
+</div>
+
+<div id="tooltip"></div>
+
+<div id="about-toggle">info</div>
+<div id="about-panel" class="panel">
+  <p><b>The rule:</b> starting from any Wikipedia article, take the first link in the body text — ignoring parentheses, italics, and anything outside the main prose — then repeat on the page you land on. Do that enough times and, famously, roughly 19 times in 20 you end up at <b>Philosophy</b>, which loops back on itself.</p>
+  <p><b>This visualization</b> either crawls that rule live against Wikipedia's API from your browser, or loads a synthetic demo web built from real article titles arranged to show the same converging shape (clearly not live link data). Each chain becomes a branch; branches that share a page merge, which is why it fans out like a web instead of separate threads.</p>
+  <p><b>Controls:</b> drag to orbit, scroll to zoom, shift-drag (or right-drag) to pan, click a node to inspect it and trace its path to Philosophy, search to jump to any loaded page. Use the <b>Hops shown</b> slider to expand or contract the depth of the visible web.</p>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loading-text">Loading…</div>
+  <div id="loading-bar-track"><div id="loading-bar"></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js">
+</script>
+<script>
+(function() {
+  "use strict";
+
+  if (typeof THREE === 'undefined') {
+    document.getElementById('loading-text').textContent = 'Could not load the 3D engine (cdnjs.cloudflare.com blocked?)';
+    document.getElementById('loading-bar-track').style.display = 'none';
+    const msg = document.createElement('div');
+    msg.style.cssText = 'max-width:340px;text-align:center;font-size:12px;color:#8b8ba3;margin-top:14px;line-height:1.6;';
+    msg.textContent = 'This page loads Three.js from cdnjs.cloudflare.com. If that domain is blocked in this preview, download the file and open it directly in your browser instead.';
+    document.getElementById('loading').appendChild(msg);
+    return;
+  }
+
+  /* ============================== CONFIG ============================== */
+  const CONFIG = {
+    wikiApi: 'https://en.wikipedia.org/w/api.php',
+    rootTitle: 'Philosophy',
+    crawlMaxHops: 50,
+    concurrency: 3,
+    minRequestIntervalMs: 230,
+    depthSpacing: 24,
+    unconvergedBaseRadiusFactor: 1.18,
+    relaxIterations: 4,
+  };
+
+  /* ============================ DEMO DATA =============================
+     A curated pool of real, well‑established Wikipedia article titles.
+     In demo mode we build a synthetic tree with a guaranteed 20‑hop spine
+     so you can see the full depth effect. Edges are procedurally generated,
+     not scraped — this gives instant, offline interactivity.          */
+  const DEMO_TITLE_POOL = [
+    "Science","Knowledge","Reason","Logic","Metaphysics","Epistemology","Ethics","Aesthetics",
+    "Aristotle","Plato","Socrates","Immanuel Kant","René Descartes","David Hume","Confucius",
+    "Mathematics","Physics","Chemistry","Biology","Astronomy","Geology","Psychology","Sociology",
+    "Language","Linguistics","Grammar","Alphabet","Writing","Literature","Poetry","Mythology",
+    "History","Prehistory","Civilization","Culture","Religion","Theology","Mysticism","Cosmology",
+    "Universe","Galaxy","Solar System","Planet","Star","Black hole","Quantum mechanics","Relativity",
+    "Energy","Matter","Atom","Molecule","Electron","Gravity","Force","Motion",
+    "Earth","Continent","Europe","Asia","Africa","North America","South America","Oceania",
+    "Ocean","Mountain","River","Climate","Weather","Ecosystem","Evolution","Natural selection",
+    "Charles Darwin","Isaac Newton","Albert Einstein","Galileo Galilei","Marie Curie","Nikola Tesla",
+    "Human","Animal","Plant","Cell (biology)","DNA","Gene","Species","Organism",
+    "Technology","Engineering","Computer","Internet","Software","Algorithm","Mathematics education","Information",
+    "Art","Music","Painting","Sculpture","Architecture","Theatre","Film","Dance",
+    "Society","Politics","Government","Democracy","Law","Economics","Trade","Money",
+    "War","Peace","Diplomacy","Empire","Nation","State (polity)","Revolution","Independence",
+    "Ancient Egypt","Ancient Greece","Ancient Rome","Middle Ages","Renaissance","Industrial Revolution","Enlightenment","Modernity",
+    "China","India","Japan","Egypt","Greece","Italy","France","Germany",
+    "United Kingdom","United States","Russia","Brazil","Australia","Canada","Mexico","Spain",
+    "Philosophy of mind","Free will","Consciousness","Existence","Truth","Time","Space","Causality",
+    "Number","Geometry","Algebra","Calculus","Set theory","Probability","Statistics","Logic gate",
+    "Light","Sound","Heat","Electricity","Magnetism","Wave","Particle","Field (physics)",
+    "Water","Fire","Air","Earth (classical element)","Rock (geology)","Mineral","Metal","Crystal",
+    "Bird","Fish","Mammal","Insect","Reptile","Bacteria","Virus","Fungus",
+    "Food","Agriculture","Domestication","Hunter-gatherer","Trade route","City","Village","Architecture style",
+    "Symbol","Sign (semiotics)","Communication","Translation","Dictionary","Encyclopedia","Book","Printing press",
+    "Belief","Myth","Ritual","Tradition","Custom","Value (ethics)","Morality","Virtue"
+  ];
+
+  /* ============================== STATE ============================== */
+  let graph = new Map();          // title -> node
+  let nodesArray = [];
+  let selectedNode = null;
+  let isLiveMode = false;
+  let crawlInProgress = false;
+  let displayMaxDepth = 20;      // default shows 20 hops
+  let graphMaxDepth = 0;
+
+  /* ============================ THREE.JS SETUP ========================= */
+  const container = document.getElementById('canvas-container');
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(58, window.innerWidth/window.innerHeight, 0.1, 6000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x05050b, 1);
+  container.appendChild(renderer.domElement);
+
+  const worldGroup = new THREE.Group();
+  scene.add(worldGroup);
+
+  /* starfield */
+  (function buildStarfield() {
+    const count = 3500;
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const r = 1400 + Math.random() * 900;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      positions[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+      positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i*3+2] = r * Math.cos(phi);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({ color: 0x9aa5ff, size: 1.6, sizeAttenuation: true, transparent: true, opacity: 0.5, depthWrite: false });
+    scene.add(new THREE.Points(geo, mat));
+  })();
+
+  /* node shader material (glowing circular sprites) */
+  const nodeMaterial = new THREE.ShaderMaterial({
+    uniforms: {},
+    vertexShader: `
+      attribute float aSize;
+      attribute vec3 aColor;
+      varying vec3 vColor;
+      void main() {
+        vColor = aColor;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = aSize * (420.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      void main() {
+        vec2 c = gl_PointCoord - vec2(0.5);
+        float d = length(c);
+        if (d > 0.5) discard;
+        float glow = smoothstep(0.5, 0.02, d);
+        gl_FragColor = vec4(vColor, glow);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+
+  const edgeMaterial = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false });
+  const highlightMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+
+  let nodePoints = null;
+  let edgeLines = null;
+  let highlightLine = null;
+
+  /* ============================ CAMERA CONTROLS ========================= */
+  let camTheta = 1.15, camPhi = 1.15, camRadius = 340;
+  const camTarget = new THREE.Vector3(0, 0, 0);
+  const desiredTarget = new THREE.Vector3(0, 0, 0);
+  let isDragging = false, isPanning = false, lastX = 0, lastY = 0;
+  let autoRotate = true;
+
+  function updateCameraPosition() {
+    camera.position.x = camTarget.x + camRadius * Math.sin(camPhi) * Math.cos(camTheta);
+    camera.position.y = camTarget.y + camRadius * Math.cos(camPhi);
+    camera.position.z = camTarget.z + camRadius * Math.sin(camPhi) * Math.sin(camTheta);
+    camera.lookAt(camTarget);
+  }
+  updateCameraPosition();
+
+  function getRightUp() {
+    const dir = new THREE.Vector3().subVectors(camTarget, camera.position).normalize();
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    const right = new THREE.Vector3().crossVectors(dir, worldUp).normalize();
+    const up = new THREE.Vector3().crossVectors(right, dir).normalize();
+    return { right, up };
+  }
+
+  container.addEventListener('pointerdown', e => {
+    isDragging = true;
+    isPanning = e.button === 2 || e.shiftKey;
+    lastX = e.clientX; lastY = e.clientY;
+    container.classList.add('dragging');
+  });
+  window.addEventListener('pointerup', () => { isDragging = false; container.classList.remove('dragging'); });
+  window.addEventListener('pointermove', e => {
+    pointerNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+    pointerNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    lastClientX = e.clientX; lastClientY = e.clientY;
+    if (!isDragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    if (isPanning) {
+      const { right, up } = getRightUp();
+      const panSpeed = camRadius * 0.0016;
+      camTarget.addScaledVector(right, -dx * panSpeed);
+      camTarget.addScaledVector(up, dy * panSpeed);
+      desiredTarget.copy(camTarget);
+    } else {
+      camTheta -= dx * 0.0055;
+      camPhi = Math.min(Math.PI - 0.06, Math.max(0.06, camPhi - dy * 0.0055));
+    }
+  });
+  container.addEventListener('contextmenu', e => e.preventDefault());
+  container.addEventListener('wheel', e => {
+    e.preventDefault();
+    camRadius = Math.min(1600, Math.max(15, camRadius * (1 + e.deltaY * 0.0012)));
+  }, { passive: false });
+
+  /* touch support */
+  let lastTouchDist = null;
+  container.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) { isDragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; }
+    else if (e.touches.length === 2) { lastTouchDist = touchDist(e.touches); }
+  }, { passive: true });
+  container.addEventListener('touchmove', e => {
+    if (e.touches.length === 1 && isDragging) {
+      const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+      camTheta -= dx * 0.006;
+      camPhi = Math.min(Math.PI - 0.06, Math.max(0.06, camPhi - dy * 0.006));
+    } else if (e.touches.length === 2) {
+      const d = touchDist(e.touches);
+      if (lastTouchDist) { camRadius = Math.min(1600, Math.max(15, camRadius * (1 + (lastTouchDist - d) * 0.003))); }
+      lastTouchDist = d;
+    }
+  }, { passive: true });
+  container.addEventListener('touchend', () => { isDragging = false; lastTouchDist = null; });
+  function touchDist(t) { const a = t[0], b = t[1]; return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  /* ============================ RAYCAST / PICK ========================= */
+  const raycaster = new THREE.Raycaster();
+  raycaster.params.Points.threshold = 3.2;
+  const pointerNDC = new THREE.Vector2(-10, -10);
+  let lastClientX = 0, lastClientY = 0;
+  let hoveredIndex = -1;
+
+  const tooltip = document.getElementById('tooltip');
+
+  container.addEventListener('click', () => {
+    if (hoveredIndex >= 0 && nodesArray[hoveredIndex]) selectNode(nodesArray[hoveredIndex]);
+  });
+
+  function updateHover() {
+    if (!nodePoints) { tooltip.style.display = 'none'; return; }
+    raycaster.setFromCamera(pointerNDC, camera);
+    const hits = raycaster.intersectObject(nodePoints);
+    if (hits.length) {
+      hoveredIndex = hits[0].index;
+      const n = nodesArray[hoveredIndex];
+      tooltip.style.display = 'block';
+      tooltip.style.left = lastClientX + 'px';
+      tooltip.style.top = lastClientY + 'px';
+      tooltip.textContent = n.title + (n.status === 'root' ? ' · root' : ' · ' + n.depth + ' hop' + (n.depth === 1 ? '' : 's'));
+      container.style.cursor = 'pointer';
+    } else {
+      hoveredIndex = -1;
+      tooltip.style.display = 'none';
+      container.style.cursor = isDragging ? 'grabbing' : 'grab';
+    }
+  }
+
+  /* ============================ COLOR / SIZE ============================ */
+  function colorForNode(node, maxDepth) {
+    if (node.status === 'root') return { r: 1.0, g: 0.847, b: 0.541 };
+    if (node.status === 'loop' || node.status === 'deadend') return { r: 0.39, g: 0.45, b: 0.55 };
+    const t = Math.min(1, node.depth / Math.max(6, maxDepth * 0.85));
+    const stops = [
+      { p: 0.0, c: [0.545, 0.361, 0.965] },
+      { p: 0.35, c: [0.133, 0.827, 0.933] },
+      { p: 0.7, c: [0.984, 0.443, 0.522] },
+      { p: 1.0, c: [0.984, 0.749, 0.145] }
+    ];
+    let a = stops[0], b = stops[stops.length-1];
+    for (let i = 0; i < stops.length-1; i++) {
+      if (t >= stops[i].p && t <= stops[i+1].p) { a = stops[i]; b = stops[i+1]; break; }
+    }
+    const localT = (b.p === a.p) ? 0 : (t - a.p) / (b.p - a.p);
+    return {
+      r: a.c[0] + (b.c[0] - a.c[0]) * localT,
+      g: a.c[1] + (b.c[1] - a.c[1]) * localT,
+      b: a.c[2] + (b.c[2] - a.c[2]) * localT
+    };
+  }
+
+  function sizeForNode(node) {
+    if (node.status === 'root') return 22;
+    const base = 3.2;
+    return base + Math.min(9, Math.log2((node.subtreeSize || 1) + 1) * 2.1);
+  }
+
+  /* ============================== VECTOR HELPERS ========================= */
+  function vAdd(a, b) { return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }; }
+  function vScale(a, s) { return { x: a.x * s, y: a.y * s, z: a.z * s }; }
+  function vNorm(a) { const l = Math.hypot(a.x, a.y, a.z) || 1; return { x: a.x/l, y: a.y/l, z: a.z/l }; }
+  function vCross(a, b) { return { x: a.y*b.z - a.z*b.y, y: a.z*b.x - a.x*b.z, z: a.x*b.y - a.y*b.x }; }
+
+  /* ============================== LAYOUT ============================== */
+  function computeSubtreeSizes(rootTitle) {
+    function dfs(t) {
+      const node = graph.get(t);
+      let size = 1;
+      for (const c of node.children) size += dfs(c);
+      node.subtreeSize = size;
+      return size;
+    }
+    if (graph.has(rootTitle)) dfs(rootTitle);
+  }
+
+  function computeDepthsFromRoot() {
+    const root = graph.get(CONFIG.rootTitle);
+    if (!root) return { maxDepth: 0, orphanTitles: [] };
+    root.depth = 0;
+    const visited = new Set([root.title]);
+    const queue = [root.title];
+    let maxDepth = 0;
+    while (queue.length) {
+      const t = queue.shift();
+      const node = graph.get(t);
+      for (const c of node.children) {
+        if (visited.has(c)) continue;
+        visited.add(c);
+        const cn = graph.get(c);
+        cn.depth = node.depth + 1;
+        maxDepth = Math.max(maxDepth, cn.depth);
+        queue.push(c);
+      }
+    }
+    const orphanTitles = [];
+    for (const [t, n] of graph) {
+      if (!visited.has(t)) orphanTitles.push(t);
+    }
+    return { maxDepth, orphanTitles };
+  }
+
+  function groupOrphanComponents(orphanTitles) {
+    const orphanSet = new Set(orphanTitles);
+    const seen = new Set();
+    const components = [];
+    for (const t of orphanTitles) {
+      if (seen.has(t)) continue;
+      const comp = [];
+      const stack = [t];
+      seen.add(t);
+      while (stack.length) {
+        const cur = stack.pop();
+        comp.push(cur);
+        const node = graph.get(cur);
+        const neighbors = [];
+        if (node.parent && orphanSet.has(node.parent)) neighbors.push(node.parent);
+        for (const c of node.children) if (orphanSet.has(c)) neighbors.push(c);
+        for (const nb of neighbors) if (!seen.has(nb)) { seen.add(nb); stack.push(nb); }
+      }
+      components.push(comp);
+    }
+    return components;
+  }
+
+  function orthonormalBasis(dir) {
+    const forward = vNorm(dir);
+    const arbitrary = Math.abs(forward.y) < 0.98 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+    const right = vNorm(vCross(arbitrary, forward));
+    const up = vCross(forward, right);
+    return { right, up, forward };
+  }
+
+  const GOLDEN_ANGLE = 2.399963229728653;
+
+  function layoutChildren(node, dir, coneAngle, isRootLevel) {
+    const kids = node.children.map(t => graph.get(t));
+    if (kids.length === 0) return;
+    const basis = orthonormalBasis(dir);
+    kids.forEach((kid, i) => {
+      const frac = (i + 0.5) / kids.length;
+      const theta = i * GOLDEN_ANGLE;
+      const rFrac = Math.sqrt(frac);
+      const polar = rFrac * coneAngle;
+      const lx = Math.sin(polar) * Math.cos(theta);
+      const ly = Math.sin(polar) * Math.sin(theta);
+      const lz = Math.cos(polar);
+      const worldDir = vNorm({
+        x: basis.right.x * lx + basis.up.x * ly + basis.forward.x * lz,
+        y: basis.right.y * lx + basis.up.y * ly + basis.forward.y * lz,
+        z: basis.right.z * lx + basis.up.z * ly + basis.forward.z * lz
+      });
+      const edgeLen = CONFIG.depthSpacing * (0.88 + 0.35 * pseudoRandom(kid.title));
+      kid.pos = vAdd(node.pos, vScale(worldDir, edgeLen));
+      const nextCone = isRootLevel ? Math.PI / 2.1 : Math.min(coneAngle, Math.PI / 2.3);
+      layoutChildren(kid, worldDir, nextCone, false);
+    });
+  }
+
+  function pseudoRandom(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) & 0xffffffff; }
+    return ((h >>> 0) % 1000) / 1000;
+  }
+
+  function layoutOrphanComponents(components, outerRadius) {
+    components.forEach((comp, ci) => {
+      const compSet = new Set(comp);
+      let anchor = comp.find(t => { const n = graph.get(t); return !n.parent || !compSet.has(n.parent); }) || comp[0];
+      const theta = pseudoRandom(anchor + '_t') * Math.PI * 2;
+      const phi = Math.acos(2 * pseudoRandom(anchor + '_p') - 1);
+      const shellR = outerRadius * (1 + 0.12 * pseudoRandom(anchor + '_r'));
+      const anchorPos = {
+        x: shellR * Math.sin(phi) * Math.cos(theta),
+        y: shellR * Math.sin(phi) * Math.sin(theta),
+        z: shellR * Math.cos(phi)
+      };
+      graph.get(anchor).pos = anchorPos;
+      graph.get(anchor).depth = 0;
+      const outward = vNorm(anchorPos);
+      const visited = new Set([anchor]);
+      const queue = [anchor];
+      while (queue.length) {
+        const t = queue.shift();
+        const node = graph.get(t);
+        const neighbors = [];
+        if (node.parent && compSet.has(node.parent)) neighbors.push(node.parent);
+        for (const c of node.children) if (compSet.has(c)) neighbors.push(c);
+        let idx = 0;
+        for (const nb of neighbors) {
+          if (visited.has(nb)) continue;
+          visited.add(nb);
+          const nbNode = graph.get(nb);
+          const jitter = orthonormalBasis(outward);
+          const a = idx * GOLDEN_ANGLE, r = 0.55;
+          const lx = Math.cos(a) * r, ly = Math.sin(a) * r, lz = 1;
+          const dir = vNorm({
+            x: jitter.right.x * lx + jitter.up.x * ly + jitter.forward.x * lz,
+            y: jitter.right.y * lx + jitter.up.y * ly + jitter.forward.y * lz,
+            z: jitter.right.z * lx + jitter.up.z * ly + jitter.forward.z * lz
+          });
+          nbNode.pos = vAdd(node.pos, vScale(dir, CONFIG.depthSpacing * 0.55));
+          nbNode.depth = node.depth + 1;
+          queue.push(nb);
+          idx++;
+        }
+      }
+    });
+  }
+
+  function relax(nodes, iterations) {
+    if (nodes.length < 2) return;
+    const cellSize = CONFIG.depthSpacing * 0.7;
+    for (let iter = 0; iter < iterations; iter++) {
+      const grid = new Map();
+      const keyOf = (x, y, z) => Math.round(x/cellSize) + ',' + Math.round(y/cellSize) + ',' + Math.round(z/cellSize);
+      for (const n of nodes) {
+        const k = keyOf(n.pos.x, n.pos.y, n.pos.z);
+        if (!grid.has(k)) grid.set(k, []);
+        grid.get(k).push(n);
+      }
+      const forces = new Array(nodes.length);
+      for (let ni = 0; ni < nodes.length; ni++) {
+        const n = nodes[ni];
+        let fx = 0, fy = 0, fz = 0;
+        const cx = Math.round(n.pos.x / cellSize), cy = Math.round(n.pos.y / cellSize), cz = Math.round(n.pos.z / cellSize);
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+          const bucket = grid.get((cx+dx) + ',' + (cy+dy) + ',' + (cz+dz));
+          if (!bucket) continue;
+          for (const other of bucket) {
+            if (other === n) continue;
+            let ddx = n.pos.x - other.pos.x, ddy = n.pos.y - other.pos.y, ddz = n.pos.z - other.pos.z;
+            let distSq = ddx*ddx + ddy*ddy + ddz*ddz;
+            if (distSq < 0.0001) { ddx = pseudoRandom(n.title+other.title)-0.5; ddy = 0.1; ddz = 0.05; distSq = 1; }
+            const minDist = cellSize * 0.85;
+            if (distSq < minDist * minDist) {
+              const dist = Math.sqrt(distSq);
+              const push = (minDist - dist) / dist * 0.22;
+              fx += ddx * push; fy += ddy * push; fz += ddz * push;
+            }
+          }
+        }
+        forces[ni] = { fx, fy, fz };
+      }
+      for (let ni = 0; ni < nodes.length; ni++) {
+        const n = nodes[ni];
+        if (n.status === 'root') continue;
+        n.pos.x += forces[ni].fx;
+        n.pos.y += forces[ni].fy;
+        n.pos.z += forces[ni].fz;
+      }
+    }
+  }
+
+  function runLayout() {
+    const root = graph.get(CONFIG.rootTitle);
+    if (!root) { nodesArray = []; return 0; }
+    root.pos = { x: 0, y: 0, z: 0 };
+    computeSubtreeSizes(CONFIG.rootTitle);
+    const { maxDepth, orphanTitles } = computeDepthsFromRoot();
+    graphMaxDepth = maxDepth;
+    layoutChildren(root, { x: 0, y: 1, z: 0 }, Math.PI, true);
+    const converged = [...graph.values()].filter(n => n.status === 'root' || (n.pos));
+    relax(converged.filter(n => n.pos), CONFIG.relaxIterations);
+
+    if (orphanTitles.length) {
+      const converegedRadii = converged.filter(n => n.pos).map(n => Math.hypot(n.pos.x, n.pos.y, n.pos.z));
+      const maxR = converegedRadii.length ? Math.max(...converegedRadii) : CONFIG.depthSpacing * 4;
+      const outerR = maxR * CONFIG.unconvergedBaseRadiusFactor;
+      const components = groupOrphanComponents(orphanTitles);
+      layoutOrphanComponents(components, outerR);
+    }
+
+    nodesArray = [...graph.values()].filter(n => n.pos);
+    nodesArray._maxDepth = graphMaxDepth;
+    return graphMaxDepth;
+  }
+
+  /* ============================ SCENE BUILD ============================ */
+  function disposeObj(obj) {
+    if (!obj) return;
+    scene.remove(obj); worldGroup.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  }
+
+  function rebuildScene() {
+    disposeObj(nodePoints); disposeObj(edgeLines); disposeObj(highlightLine);
+
+    const maxDepth = nodesArray._maxDepth || 8;
+    const visible = nodesArray.filter(n => n.depth <= displayMaxDepth);
+
+    const n = visible.length;
+    const positions = new Float32Array(n * 3);
+    const colors = new Float32Array(n * 3);
+    const sizes = new Float32Array(n);
+    visible.forEach((node, i) => {
+      positions[i*3] = node.pos.x;
+      positions[i*3+1] = node.pos.y;
+      positions[i*3+2] = node.pos.z;
+      const c = colorForNode(node, maxDepth);
+      colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
+      sizes[i] = sizeForNode(node);
+      node._index = i;
+    });
+    const nodeGeo = new THREE.BufferGeometry();
+    nodeGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    nodeGeo.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+    nodeGeo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+    nodePoints = new THREE.Points(nodeGeo, nodeMaterial);
+    worldGroup.add(nodePoints);
+
+    // Edges: only where both parent and child are within depth limit
+    const edgeCandidates = visible.filter(n => n.parent && graph.get(n.parent) && graph.get(n.parent).pos &&
+      graph.get(n.parent).depth <= displayMaxDepth);
+    const ePositions = new Float32Array(edgeCandidates.length * 6);
+    const eColors = new Float32Array(edgeCandidates.length * 6);
+    edgeCandidates.forEach((node, i) => {
+      const parent = graph.get(node.parent);
+      ePositions[i*6] = parent.pos.x; ePositions[i*6+1] = parent.pos.y; ePositions[i*6+2] = parent.pos.z;
+      ePositions[i*6+3] = node.pos.x; ePositions[i*6+4] = node.pos.y; ePositions[i*6+5] = node.pos.z;
+      const c1 = colorForNode(parent, maxDepth), c2 = colorForNode(node, maxDepth);
+      eColors[i*6] = c1.r; eColors[i*6+1] = c1.g; eColors[i*6+2] = c1.b;
+      eColors[i*6+3] = c2.r; eColors[i*6+4] = c2.g; eColors[i*6+5] = c2.b;
+    });
+    const edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute('position', new THREE.BufferAttribute(ePositions, 3));
+    edgeGeo.setAttribute('color', new THREE.BufferAttribute(eColors, 3));
+    edgeLines = new THREE.LineSegments(edgeGeo, edgeMaterial);
+    edgeLines.visible = document.getElementById('toggle-edges').checked;
+    worldGroup.add(edgeLines);
+
+    const hGeo = new THREE.BufferGeometry();
+    hGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+    highlightLine = new THREE.Line(hGeo, highlightMaterial);
+    highlightLine.visible = false;
+    worldGroup.add(highlightLine);
+
+    updateStats();
+    updateSearchList();
+    syncDepthSlider();
+  }
+
+  /* ============================== INFO / SELECT ========================= */
+  const infoPanel = document.getElementById('info-panel');
+  document.getElementById('info-close').addEventListener('click', () => {
+    infoPanel.classList.remove('visible');
+    selectedNode = null;
+    if (highlightLine) highlightLine.visible = false;
+  });
+
+  function selectNode(node) {
+    selectedNode = node;
+    const path = [];
+    let cur = node;
+    const guard = new Set();
+    while (cur && !guard.has(cur.title) && cur.depth <= displayMaxDepth) {
+      guard.add(cur.title);
+      path.push(cur);
+      cur = cur.parent ? graph.get(cur.parent) : null;
+      if (cur && cur.depth > displayMaxDepth) break;
+    }
+    if (highlightLine) {
+      const positions = new Float32Array(path.length * 3);
+      path.forEach((n, i) => { positions[i*3] = n.pos.x; positions[i*3+1] = n.pos.y; positions[i*3+2] = n.pos.z; });
+      highlightLine.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      highlightLine.geometry.attributes.position.needsUpdate = true;
+      highlightLine.visible = true;
+    }
+    document.getElementById('info-title').textContent = node.title;
+    const statusLabel = node.status === 'root' ? 'Root of the web' :
+                        node.status === 'loop' ? 'Loops without reaching Philosophy' :
+                        node.status === 'deadend' ? 'Dead end — no further link found' :
+                        (path.length - 1) + ' hop' + (path.length - 1 === 1 ? '' : 's') + ' from Philosophy';
+    document.getElementById('info-meta').innerHTML = statusLabel + ' · <span>' + (node.subtreeSize || 1) + '</span> pages flow through this node';
+    document.getElementById('info-link').href = 'https://en.wikipedia.org/wiki/' + encodeURIComponent(node.title.replace(/ /g, '_'));
+    infoPanel.classList.add('visible');
+    desiredTarget.set(node.pos.x, node.pos.y, node.pos.z);
+  }
+
+  /* ============================== STATS / SEARCH ========================= */
+  function updateStats() {
+    const visible = nodesArray.filter(n => n.depth <= displayMaxDepth);
+    const total = visible.length;
+    const converged = visible.filter(n => n.status === 'converged' || n.status === 'root').length;
+    const hopsList = visible.filter(n => n.status !== 'root' && (n.status === 'converged')).map(n => n.depth);
+    const avgHops = hopsList.length ? (hopsList.reduce((a,b) => a+b, 0) / hopsList.length) : 0;
+    const maxHops = hopsList.length ? Math.max(...hopsList) : 0;
+    let hub = null;
+    for (const n of visible) {
+      if (n.status !== 'root' && (!hub || (n.subtreeSize || 0) > (hub.subtreeSize || 0))) hub = n;
+    }
+    document.getElementById('stat-nodes').textContent = total;
+    document.getElementById('stat-edges').textContent = Math.max(0, total - 1);
+    document.getElementById('stat-converge').textContent = total ? Math.round(100 * converged / total) + '%' : '0%';
+    document.getElementById('stat-avghops').textContent = avgHops.toFixed(1);
+    document.getElementById('stat-maxhops').textContent = maxHops;
+    document.getElementById('stat-hub').textContent = hub ? hub.title : '—';
+  }
+
+  function updateSearchList() {
+    const list = document.getElementById('title-list');
+    list.innerHTML = '';
+    const visible = nodesArray.filter(n => n.depth <= displayMaxDepth);
+    visible.slice(0, 600).forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n.title;
+      list.appendChild(opt);
+    });
+  }
+
+  function syncDepthSlider() {
+    const slider = document.getElementById('depth-range');
+    const maxD = Math.max(0, graphMaxDepth);
+    slider.max = Math.max(1, maxD);
+    const val = Math.min(displayMaxDepth, maxD);
+    slider.value = val;
+    document.getElementById('depth-val').textContent = val;
+  }
+
+  document.getElementById('btn-goto').addEventListener('click', doSearch);
+  document.getElementById('search-box').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+  function doSearch() {
+    const q = document.getElementById('search-box').value.trim().toLowerCase();
+    if (!q) return;
+    let match = nodesArray.find(n => n.depth <= displayMaxDepth && n.title.toLowerCase() === q) ||
+                nodesArray.find(n => n.depth <= displayMaxDepth && n.title.toLowerCase().includes(q));
+    if (match) { selectNode(match); }
+    else if (isLiveMode) { crawlSingleTitle(document.getElementById('search-box').value.trim()); }
+  }
+
+  /* ============================== WIKIPEDIA CRAWLER ========================= */
+  let lastRequestTime = 0;
+  async function rateLimitGate() {
+    const now = performance.now();
+    const wait = Math.max(0, lastRequestTime + CONFIG.minRequestIntervalMs - now);
+    lastRequestTime = now + wait;
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  }
+
+  async function fetchJSON(url) {
+    await rateLimitGate();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
+  async function fetchRandomTitles(n) {
+    const titles = [];
+    while (titles.length < n) {
+      const batch = Math.min(20, n - titles.length);
+      const url = CONFIG.wikiApi + `?action=query&list=random&rnnamespace=0&rnlimit=${batch}&format=json&origin=*`;
+      const data = await fetchJSON(url);
+      for (const r of data.query.random) titles.push(r.title);
+    }
+    return titles;
+  }
+
+  const NOISE_SELECTORS = ['table','.navbox','.infobox','.metadata','.hatnote','.dablink',
+    '.reflist','sup.reference','.mw-editsection','.thumb','.gallery','.sidebar',
+    '.ambox','.shortdescription','style','script','.mw-empty-elt',
+    '#coordinates','.plainlinks','.mw-references-wrap','.tmulti','.noprint'];
+
+  function extractFirstLink(html, selfTitle) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    NOISE_SELECTORS.forEach(sel => { doc.body.querySelectorAll(sel).forEach(el => el.remove()); });
+    const paragraphs = doc.body.querySelectorAll('p');
+    for (const p of paragraphs) {
+      const found = scan(p, { paren: 0, italic: 0 });
+      if (found) return found;
+    }
+    return null;
+
+    function scan(node, state) {
+      for (const child of node.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          const text = child.textContent;
+          for (let i = 0; i < text.length; i++) {
+            if (text[i] === '(') state.paren++;
+            else if (text[i] === ')') state.paren = Math.max(0, state.paren - 1);
+          }
+          continue;
+        }
+        if (child.nodeType !== Node.ELEMENT_NODE) continue;
+        const tag = child.tagName.toLowerCase();
+        if (tag === 'sup') continue;
+        if (tag === 'a' && state.paren === 0 && state.italic === 0 && !child.closest('i,em')) {
+          const href = child.getAttribute('href') || '';
+          const m = href.match(/^\/wiki\/([^:]+)$/);
+          if (m && !child.classList.contains('new')) {
+            try {
+              const raw = m[1].split('#')[0];
+              const title = decodeURIComponent(raw).replace(/_/g, ' ');
+              if (title && title.toLowerCase() !== selfTitle.toLowerCase()) return title;
+            } catch (e) { /* ignore */ }
+          }
+        }
+        const isItalic = (tag === 'i' || tag === 'em');
+        if (isItalic) state.italic++;
+        const inner = scan(child, state);
+        if (isItalic) state.italic--;
+        if (inner) return inner;
+      }
+      return null;
+    }
+  }
+
+  const linkCache = new Map();
+  async function resolveFirstLink(title) {
+    if (linkCache.has(title)) return linkCache.get(title);
+    const url = CONFIG.wikiApi + `?action=parse&page=${encodeURIComponent(title)}&prop=text&format=json&redirects=1&origin=*`;
+    let result;
+    try {
+      const data = await fetchJSON(url);
+      if (!data.parse) { result = { resolvedTitle: title, firstLink: null, error: true }; }
+      else {
+        const resolvedTitle = data.parse.title;
+        const html = data.parse.text['*'];
+        const firstLink = extractFirstLink(html, resolvedTitle);
+        result = { resolvedTitle, firstLink };
+      }
+    } catch (e) {
+      result = { resolvedTitle: title, firstLink: null, error: true };
+    }
+    linkCache.set(title, result);
+    if (result.resolvedTitle && result.resolvedTitle !== title) linkCache.set(result.resolvedTitle, result);
+    return result;
+  }
+
+  function attachPath(pathTitles, terminalTitle, terminalStatus) {
+    let anchorTitle = terminalTitle;
+    for (let i = pathTitles.length - 1; i >= 0; i--) {
+      const t = pathTitles[i];
+      if (graph.has(t)) { anchorTitle = t; continue; }
+      const status = terminalTitle ? 'converged' : terminalStatus;
+      const node = { title: t, parent: anchorTitle, children: [], status, depth: 0, subtreeSize: 1 };
+      if (anchorTitle && graph.has(anchorTitle)) graph.get(anchorTitle).children.push(t);
+      graph.set(t, node);
+      anchorTitle = t;
+    }
+  }
+
+  async function followChain(seedTitle) {
+    let current = seedTitle;
+    const pathTitles = [];
+    for (let hop = 0; hop < CONFIG.crawlMaxHops; hop++) {
+      if (graph.has(current)) { attachPath(pathTitles, current, null); return; }
+      if (current.toLowerCase() === CONFIG.rootTitle.toLowerCase()) {
+        if (!graph.has(CONFIG.rootTitle)) graph.set(CONFIG.rootTitle, { title: CONFIG.rootTitle, parent: null, children: [], status: 'root', depth: 0, subtreeSize: 1 });
+        attachPath(pathTitles, CONFIG.rootTitle, null);
+        return;
+      }
+      if (pathTitles.includes(current)) { attachPath(pathTitles, null, 'loop'); return; }
+      pathTitles.push(current);
+      const { resolvedTitle, firstLink, error } = await resolveFirstLink(current);
+      if (resolvedTitle && resolvedTitle !== current && graph.has(resolvedTitle)) {
+        pathTitles.pop(); pathTitles.push(resolvedTitle);
+        attachPath(pathTitles, resolvedTitle, null); return;
+      }
+      if (error || !firstLink) { attachPath(pathTitles, null, 'deadend'); return; }
+      current = firstLink;
+    }
+    attachPath(pathTitles, null, 'loop');
+  }
+
+  async function runPool(items, worker, concurrency, onProgress) {
+    let idx = 0, done = 0;
+    async function next() {
+      while (idx < items.length) {
+        const my = idx++;
+        try { await worker(items[my]); } catch (e) { /* isolate failures */ }
+        done++;
+        if (onProgress) onProgress(done, items.length);
+      }
+    }
+    const workers = [];
+    for (let i = 0; i < concurrency; i++) workers.push(next());
+    await Promise.all(workers);
+  }
+
+  async function crawlSeeds(seedCount) {
+    crawlInProgress = true;
+    setLoading(true, 'Fetching random seed articles…', 0);
+    let seeds;
+    try {
+      seeds = await fetchRandomTitles(seedCount);
+    } catch (e) {
+      setLoading(false);
+      alert('Could not reach Wikipedia\'s API from this environment (it may be blocked in this preview by CSP/CORS). Try downloading the file and opening it directly in your browser — that removes any sandbox restriction. Falling back to demo mode.');
+      crawlInProgress = false;
+      loadDemo();
+      return;
+    }
+    graph = new Map();
+    graph.set(CONFIG.rootTitle, { title: CONFIG.rootTitle, parent: null, children: [], status: 'root', depth: 0, subtreeSize: 1 });
+    let lastRebuild = 0;
+    await runPool(seeds, followChain, CONFIG.concurrency, (done, total) => {
+      setLoading(true, `Following first-link chains… (${done}/${total} seeds)`, done/total*100);
+      const now = performance.now();
+      if (now - lastRebuild > 500) {
+        lastRebuild = now;
+        try { runLayout(); rebuildScene(); } catch (e) {}
+      }
+    });
+    runLayout();
+    displayMaxDepth = Math.min(displayMaxDepth, graphMaxDepth);
+    rebuildScene();
+    isLiveMode = true;
+    setLoading(false);
+    crawlInProgress = false;
+    syncDepthSlider();
+  }
+
+  async function crawlSingleTitle(title) {
+    if (!title || crawlInProgress) return;
+    setLoading(true, 'Tracing ' + title + '…', 30);
+    try { await followChain(title); } catch (e) {}
+    runLayout();
+    displayMaxDepth = Math.min(displayMaxDepth, graphMaxDepth);
+    rebuildScene();
+    setLoading(false);
+    syncDepthSlider();
+    const node = graph.get(title) || nodesArray.find(n => n.title.toLowerCase() === title.toLowerCase());
+    if (node) selectNode(node);
+  }
+
+  /* ============================== DEMO MODE ==============================
+     The demo builds a synthetic tree from the title pool. To guarantee
+     depth, we first forge a "spine" of 20 unique articles, then attach
+     the rest randomly. This gives you a full 20‑hop chain to explore
+     with the slider. All edges are procedural — no live API calls.      */
+  function shuffledPool() {
+    const arr = DEMO_TITLE_POOL.slice();
+    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+    return arr;
+  }
+
+  function loadDemo() {
+    graph = new Map();
+    graph.set(CONFIG.rootTitle, { title: CONFIG.rootTitle, parent: null, children: [], status: 'root', depth: 0, subtreeSize: 1 });
+
+    const pool = shuffledPool().filter(t => t !== CONFIG.rootTitle);
+    const spineLength = Math.min(20, pool.length);
+    const spineTitles = pool.slice(0, spineLength);
+    const remaining = pool.slice(spineLength);
+
+    let prev = CONFIG.rootTitle;
+    const attached = [CONFIG.rootTitle];
+
+    // 1) Build the guaranteed 20‑hop spine
+    for (const title of spineTitles) {
+      const node = { title, parent: prev, children: [], status: 'converged', depth: 0, subtreeSize: 1 };
+      graph.get(prev).children.push(title);
+      graph.set(title, node);
+      attached.push(title);
+      prev = title;
+    }
+
+    // 2) Attach the rest randomly, weighted toward shallower parents to keep it bushy
+    for (const title of remaining) {
+      const idx = Math.floor(Math.pow(Math.random(), 1.6) * attached.length);
+      const parentTitle = attached[Math.min(idx, attached.length - 1)];
+      const isLoop = Math.random() < 0.045;
+      const node = { title, parent: parentTitle, children: [], status: isLoop ? 'loop' : 'converged', depth: 0, subtreeSize: 1 };
+      graph.get(parentTitle).children.push(title);
+      graph.set(title, node);
+      if (!isLoop) attached.push(title);
+    }
+
+    isLiveMode = false;
+    runLayout();
+    displayMaxDepth = Math.min(displayMaxDepth, graphMaxDepth);
+    rebuildScene();
+    syncDepthSlider();
+  }
+
+  /* ============================== LOADING UI ============================== */
+  const loadingEl = document.getElementById('loading');
+  const loadingText = document.getElementById('loading-text');
+  const loadingBar = document.getElementById('loading-bar');
+
+  function setLoading(on, text, pct) {
+    if (on) {
+      loadingEl.classList.remove('hidden');
+      if (text) loadingText.textContent = text;
+      if (typeof pct === 'number') loadingBar.style.width = pct + '%';
+    } else {
+      loadingEl.classList.add('hidden');
+    }
+  }
+
+  /* ============================== UI WIRING ============================== */
+  document.getElementById('btn-demo').addEventListener('click', () => {
+    if (crawlInProgress) return;
+    setLoading(true, 'Building demo web…', 50);
+    requestAnimationFrame(() => { loadDemo(); setLoading(false); });
+  });
+
+  document.getElementById('btn-live').addEventListener('click', () => {
+    if (crawlInProgress) return;
+    const n = parseInt(document.getElementById('seed-range').value, 10);
+    crawlSeeds(n);
+  });
+
+  document.getElementById('seed-range').addEventListener('input', e => {
+    document.getElementById('node-count-val').textContent = e.target.value;
+  });
+
+  const depthSlider = document.getElementById('depth-range');
+  depthSlider.addEventListener('input', function() {
+    const val = parseInt(this.value, 10);
+    displayMaxDepth = val;
+    document.getElementById('depth-val').textContent = val;
+    if (nodesArray.length) {
+      rebuildScene();
+      if (selectedNode && selectedNode.depth > displayMaxDepth) {
+        infoPanel.classList.remove('visible');
+        selectedNode = null;
+        if (highlightLine) highlightLine.visible = false;
+      }
+    }
+  });
+
+  document.getElementById('toggle-rotate').addEventListener('change', e => { autoRotate = e.target.checked; });
+  document.getElementById('toggle-edges').addEventListener('change', e => { if (edgeLines) edgeLines.visible = e.target.checked; });
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    desiredTarget.set(0, 0, 0);
+    camRadius = 340; camTheta = 1.15; camPhi = 1.15;
+  });
+  document.getElementById('about-toggle').addEventListener('click', () => {
+    document.getElementById('about-panel').classList.toggle('visible');
+  });
+
+  /* ============================== ANIMATE ============================== */
+  function animate() {
+    requestAnimationFrame(animate);
+    updateHover();
+    if (autoRotate && !isDragging) { camTheta += 0.0007; }
+    camTarget.lerp(desiredTarget, 0.07);
+    updateCameraPosition();
+    renderer.render(scene, camera);
+  }
+
+  /* ============================== BOOT ============================== */
+  setLoading(true, 'Building demo web…', 20);
+  requestAnimationFrame(() => {
+    loadDemo();
+    setLoading(false);
+    syncDepthSlider();
+    animate();
+  });
+
+})();
+</script>
+</body>
+</html>
